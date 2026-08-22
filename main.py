@@ -24,6 +24,10 @@ def find_empty_dirs(root):
     return empty
 
 
+def rel_path(root, path):
+    return os.path.join(".", os.path.relpath(path, root))
+
+
 def confirm_delete(prompt):
     while True:
         ans = input(prompt).strip().lower()
@@ -42,12 +46,12 @@ def main():
     if thumbs_files:
         print("找到以下 Thumbs.db 檔案:")
         for f in thumbs_files:
-            print(f"  {f}")
+            print(f"  {rel_path(root, f)}")
         if confirm_delete("是否刪除以上 Thumbs.db 檔案? (輸入 yes 刪除): "):
             for f in thumbs_files:
                 try:
                     os.remove(f)
-                    print(f"✅ 已刪除: {f}")
+                    print(f"✅ 已刪除: {rel_path(root, f)}")
                 except OSError:
                     pass
     else:
@@ -59,12 +63,12 @@ def main():
     if empty_dirs:
         print("找到以下空資料夾:")
         for d in empty_dirs:
-            print(f"  {d}")
+            print(f"  {rel_path(root, d)}")
         if confirm_delete("是否刪除以上空資料夾? (輸入 yes 刪除): "):
             for d in empty_dirs:
                 try:
                     os.rmdir(d)
-                    print(f"✅ 已刪除: {d}")
+                    print(f"✅ 已刪除: {rel_path(root, d)}")
                 except OSError:
                     pass
     else:
@@ -72,8 +76,8 @@ def main():
     print()
 
     print("===== 檢查 .docx =====")
-    leaf_dirs_with_image = 0
-    leaf_dirs_missing_docx = 0
+    dirs_with_docx = []
+    dirs_missing_docx = []
 
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [d for d in dirnames if not d.startswith(".")]
@@ -88,12 +92,19 @@ def main():
         if not has_image:
             continue
 
-        leaf_dirs_with_image += 1
-
         has_docx = any(f.lower().endswith(".docx") for f in filenames)
-        if not has_docx:
-            leaf_dirs_missing_docx += 1
-            print(f"{dirpath}  [❌ 無 .docx]")
+        if has_docx:
+            dirs_with_docx.append(dirpath)
+        else:
+            dirs_missing_docx.append(dirpath)
+
+    for dirpath in dirs_with_docx:
+        print(f"✅ {rel_path(root, dirpath)}")
+    for dirpath in dirs_missing_docx:
+        print(f"❌ {rel_path(root, dirpath)}")
+
+    leaf_dirs_with_image = len(dirs_with_docx) + len(dirs_missing_docx)
+    leaf_dirs_missing_docx = len(dirs_missing_docx)
     print()
 
     leaf_dirs_with_docx = leaf_dirs_with_image - leaf_dirs_missing_docx
