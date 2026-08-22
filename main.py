@@ -1,5 +1,7 @@
 import os
 
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".gif", ".tif", ".tiff"}
+
 
 def find_thumbs_files(root):
     found = []
@@ -48,10 +50,11 @@ def main():
                     print(f"✅ 已刪除: {f}")
                 except OSError:
                     pass
-    if not thumbs_files:
+    else:
         print("✅ 沒有 Thumbs.db")
+    print()
 
-    print("\n===== 檢查空資料夾 =====")
+    print("===== 檢查空資料夾 =====")
     empty_dirs = find_empty_dirs(root)
     if empty_dirs:
         print("找到以下空資料夾:")
@@ -64,12 +67,13 @@ def main():
                     print(f"✅ 已刪除: {d}")
                 except OSError:
                     pass
-    if not empty_dirs:
+    else:
         print("✅ 沒有空資料夾")
+    print()
 
-    print("\n===== 檢查 .docx =====")
-    leaf_dirs = 0
-    leaf_dirs_with_docx = 0
+    print("===== 檢查 .docx =====")
+    leaf_dirs_with_image = 0
+    leaf_dirs_missing_docx = 0
 
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [d for d in dirnames if not d.startswith(".")]
@@ -78,23 +82,34 @@ def main():
         if not is_leaf:
             continue
 
-        docx_files = [f for f in filenames if f.lower().endswith(".docx")]
-        has_docx = len(docx_files) > 0
+        has_image = any(
+            os.path.splitext(f)[1].lower() in IMAGE_EXTENSIONS for f in filenames
+        )
+        if not has_image:
+            continue
 
-        leaf_dirs += 1
-        if has_docx:
-            leaf_dirs_with_docx += 1
+        leaf_dirs_with_image += 1
 
+        has_docx = any(f.lower().endswith(".docx") for f in filenames)
         if not has_docx:
+            leaf_dirs_missing_docx += 1
             print(f"{dirpath}  [❌ 無 .docx]")
+    print()
 
-    completion_rate = leaf_dirs_with_docx / leaf_dirs * 100 if leaf_dirs > 0 else 0.0
+    leaf_dirs_with_docx = leaf_dirs_with_image - leaf_dirs_missing_docx
+    completion_rate = (
+        leaf_dirs_with_docx / leaf_dirs_with_image * 100
+        if leaf_dirs_with_image > 0
+        else 0.0
+    )
 
-    print("\n===== 統計結果 =====")
+    print("===== 統計結果 =====")
     print(f"根目錄: {root}")
-    print(f"最後一層目錄數: {leaf_dirs}")
-    print(f"有 .docx 的目錄數: {leaf_dirs_with_docx}")
-    print(f"完成度: {completion_rate:.1f}% ({leaf_dirs_with_docx}/{leaf_dirs})")
+    print(f"有圖片的目錄數: {leaf_dirs_with_image}")
+    print(f"有圖片但無 .docx 的目錄數: {leaf_dirs_missing_docx}")
+    print(
+        f"完成度: {completion_rate:.1f}% ({leaf_dirs_with_docx}/{leaf_dirs_with_image})"
+    )
 
 
 if __name__ == "__main__":
