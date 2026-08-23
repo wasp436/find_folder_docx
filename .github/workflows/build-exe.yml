@@ -20,6 +20,9 @@ jobs:
       - name: Install PyInstaller
         run: pip install pyinstaller
 
+      - name: Run print123.py
+        run: python print123.py
+
       - name: Build EXE
         run: pyinstaller --onefile --name find_folder_docx main.py
 
