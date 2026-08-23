@@ -20,23 +20,11 @@ jobs:
       - name: Install PyInstaller
         run: pip install pyinstaller
 
-      - name: Run print123.py
-        run: python print123.py
-
       - name: Build EXE
         run: pyinstaller --onefile --name find_folder_docx main.py
-
-      - name: Build print123 EXE
-        run: pyinstaller --onefile --name print123 print123.py
 
       - name: Upload EXE artifact
         uses: actions/upload-artifact@v7
         with:
           name: find_folder_docx-windows
           path: dist/find_folder_docx.exe
-
-      - name: Upload print123 EXE artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: print123-windows
-          path: dist/print123.exe
