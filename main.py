@@ -202,7 +202,7 @@ def main():
     )
 
     print("===== 統計結果 =====")
-    print(f"根目錄: {root.replace('\\\\', '/')}")
+    print(f"根目錄: {root.replace('\\', '/')}")
     print(f"有圖片的目錄數: {leaf_dirs_with_image}")
     print(f"有圖片但無 .docx 的目錄數: {leaf_dirs_missing_docx}")
     print(
