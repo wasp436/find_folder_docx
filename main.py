@@ -64,27 +64,51 @@ def generate_missing_docx_image(root, dirs_missing_docx):
         print("⚠️ 找不到可用的中文字型，略過圖片產生")
         return None
 
-    names = [rel_path(root, d) for d in dirs_missing_docx]
+    names = [os.path.basename(d) for d in dirs_missing_docx]
+    root_display = root.replace("\\", "/")
 
     width = 720
     pad = 36
     line_h = 56
-    header_h = 80
-    footer_h = 20
-    height = header_h + line_h * len(names) + footer_h
+    path_line_h = 28
 
     bg = (17, 20, 24)
     card = (26, 30, 36)
     white = (235, 238, 242)
     gray = (150, 158, 168)
 
-    img = Image.new("RGB", (width, height), bg)
-    draw = ImageDraw.Draw(img)
+    dummy_img = Image.new("RGB", (10, 10))
+    dummy_draw = ImageDraw.Draw(dummy_img)
 
+    f_path = ImageFont.truetype(font_reg_path, 20)
     f_sub = ImageFont.truetype(font_reg_path, 24)
     f_item = ImageFont.truetype(font_reg_path, 26)
 
+    max_text_width = width - pad * 2
+    path_lines = []
+    current = ""
+    for ch in root_display:
+        candidate = current + ch
+        if not current or dummy_draw.textlength(candidate, font=f_path) <= max_text_width:
+            current = candidate
+        else:
+            path_lines.append(current)
+            current = ch
+    if current:
+        path_lines.append(current)
+
+    header_h = pad + len(path_lines) * path_line_h + 16 + 46
+    footer_h = 20
+    height = header_h + line_h * len(names) + footer_h
+
+    img = Image.new("RGB", (width, height), bg)
+    draw = ImageDraw.Draw(img)
+
     y = pad
+    for line in path_lines:
+        draw.text((pad, y), line, font=f_path, fill=gray)
+        y += path_line_h
+    y += 16
     draw.text((pad, y), f"共 {len(names)} 個", font=f_sub, fill=gray)
     y += 46
 
@@ -186,7 +210,7 @@ def main():
 
     image_path = generate_missing_docx_image(root, dirs_missing_docx)
     if image_path:
-        print(f"🖼️ 已產生圖片: {rel_path(root, image_path)}")
+        print(f"已產生圖片: {rel_path(root, image_path)}")
 
 
 if __name__ == "__main__":
