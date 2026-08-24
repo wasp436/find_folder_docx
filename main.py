@@ -64,7 +64,7 @@ def generate_missing_docx_image(root, dirs_missing_docx):
         print("⚠️ 找不到可用的中文字型，略過圖片產生")
         return None
 
-    names = [os.path.basename(d) for d in dirs_missing_docx]
+    names = [os.path.relpath(d, root).replace("\\", "/") for d in dirs_missing_docx]
     root_parts = [p for p in root.replace("\\", "/").split("/") if p]
     root_display = "/".join(root_parts[-2:])
 
