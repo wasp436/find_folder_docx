@@ -2,6 +2,32 @@ import os
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".gif", ".tif", ".tiff"}
 
+CJK_FONT_CANDIDATES = {
+    "regular": [
+        r"C:\Windows\Fonts\msjh.ttc",
+        r"C:\Windows\Fonts\mingliu.ttc",
+        r"C:\Windows\Fonts\kaiu.ttf",
+        "/System/Library/Fonts/PingFang.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/arphic/uming.ttc",
+    ],
+    "bold": [
+        r"C:\Windows\Fonts\msjhbd.ttc",
+        r"C:\Windows\Fonts\mingliub.ttc",
+        r"C:\Windows\Fonts\kaiu.ttf",
+        "/System/Library/Fonts/PingFang.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+        "/usr/share/fonts/truetype/arphic/uming.ttc",
+    ],
+}
+
+
+def find_cjk_font(bold=False):
+    for path in CJK_FONT_CANDIDATES["bold" if bold else "regular"]:
+        if os.path.isfile(path):
+            return path
+    return None
+
 
 def find_thumbs_files(root):
     found = []
@@ -31,6 +57,67 @@ def rel_path(root, path):
 def confirm_delete(prompt):
     ans = input(prompt).strip().lower()
     return ans == "y"
+
+
+def generate_missing_docx_image(root, dirs_missing_docx):
+    if not dirs_missing_docx:
+        return None
+
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+    except ImportError:
+        print("⚠️ 未安裝 Pillow，略過圖片產生 (pip install pillow)")
+        return None
+
+    font_reg_path = find_cjk_font(bold=False)
+    font_bold_path = find_cjk_font(bold=True)
+    if not font_reg_path or not font_bold_path:
+        print("⚠️ 找不到可用的中文字型，略過圖片產生")
+        return None
+
+    names = [os.path.basename(d) for d in dirs_missing_docx]
+
+    width = 720
+    pad = 36
+    line_h = 56
+    header_h = 130
+    footer_h = 70
+    height = header_h + line_h * len(names) + footer_h
+
+    bg = (17, 20, 24)
+    card = (26, 30, 36)
+    white = (235, 238, 242)
+    gray = (150, 158, 168)
+
+    img = Image.new("RGB", (width, height), bg)
+    draw = ImageDraw.Draw(img)
+
+    f_title = ImageFont.truetype(font_bold_path, 40)
+    f_sub = ImageFont.truetype(font_reg_path, 24)
+    f_item = ImageFont.truetype(font_reg_path, 26)
+    f_footer = ImageFont.truetype(font_reg_path, 18)
+
+    y = pad
+    draw.text((pad, y), "缺少 .docx 的資料夾", font=f_title, fill=white)
+    y += 52
+    draw.text((pad, y), f"共 {len(names)} 個", font=f_sub, fill=gray)
+    y += 46
+
+    for name in names:
+        draw.rounded_rectangle(
+            [pad, y, width - pad, y + line_h - 10], radius=10, fill=card
+        )
+        draw.text((pad + 18, y + 9), name, font=f_item, fill=white)
+        y += line_h
+
+    y += 10
+    draw.line([(pad, y), (width - pad, y)], fill=(45, 50, 58), width=2)
+    y += 16
+    draw.text((pad, y), "資料來源: find_folder_docx 掃描結果", font=f_footer, fill=gray)
+
+    out_path = os.path.join(root, "缺少docx清單.png")
+    img.save(out_path)
+    return out_path
 
 
 def main():
@@ -116,6 +203,10 @@ def main():
     print(
         f"完成度: {completion_rate:.1f}% ({leaf_dirs_with_docx}/{leaf_dirs_with_image})"
     )
+
+    image_path = generate_missing_docx_image(root, dirs_missing_docx)
+    if image_path:
+        print(f"🖼️ 已產生圖片: {rel_path(root, image_path)}")
 
 
 if __name__ == "__main__":

@@ -17,8 +17,8 @@ jobs:
         with:
           python-version: "3.14"
 
-      - name: Install PyInstaller
-        run: pip install pyinstaller
+      - name: Install dependencies
+        run: pip install pyinstaller pillow
 
       - name: Build EXE
         run: pyinstaller --onefile --name find_folder_docx main.py
