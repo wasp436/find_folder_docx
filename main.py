@@ -65,7 +65,8 @@ def generate_missing_docx_image(root, dirs_missing_docx):
         return None
 
     names = [os.path.basename(d) for d in dirs_missing_docx]
-    root_display = root.replace("\\", "/")
+    root_parts = [p for p in root.replace("\\", "/").split("/") if p]
+    root_display = "/".join(root_parts[-3:])
 
     width = 720
     pad = 36
