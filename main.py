@@ -29,13 +29,8 @@ def rel_path(root, path):
 
 
 def confirm_delete(prompt):
-    while True:
-        ans = input(prompt).strip().lower()
-        if ans == "yes":
-            return True
-        if ans == "no":
-            return False
-        print("請輸入 yes 或 no")
+    ans = input(prompt).strip().lower()
+    return ans == "y"
 
 
 def main():
@@ -47,7 +42,7 @@ def main():
         print("找到以下 Thumbs.db 檔案:")
         for f in thumbs_files:
             print(f"  {rel_path(root, f)}")
-        if confirm_delete("是否刪除以上 Thumbs.db 檔案? (輸入 yes 刪除): "):
+        if confirm_delete("是否刪除以上 Thumbs.db 檔案? (y/N): "):
             for f in thumbs_files:
                 try:
                     os.remove(f)
@@ -64,7 +59,7 @@ def main():
         print("找到以下空資料夾:")
         for d in empty_dirs:
             print(f"  {rel_path(root, d)}")
-        if confirm_delete("是否刪除以上空資料夾? (輸入 yes 刪除): "):
+        if confirm_delete("是否刪除以上空資料夾? (y/N): "):
             for d in empty_dirs:
                 try:
                     os.rmdir(d)
