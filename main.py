@@ -126,6 +126,63 @@ def generate_missing_docx_image(root, dirs_missing_docx):
     return out_path
 
 
+def generate_missing_docx_ods(root, dirs_missing_docx):
+    if not dirs_missing_docx:
+        return None
+
+    try:
+        from pathlib import Path
+
+        from odf.opendocument import OpenDocumentSpreadsheet
+        from odf.style import Style, TextProperties
+        from odf.table import Table, TableCell, TableRow
+        from odf.text import A, P
+    except ImportError:
+        print("⚠️ 未安裝 odfpy，略過 ods 產生 (pip install odfpy)")
+        return None
+
+    doc = OpenDocumentSpreadsheet()
+
+    link_style = Style(name="Link", family="text")
+    link_style.addElement(
+        TextProperties(color="#0563C1", textunderlinestyle="solid", textunderlinetype="single")
+    )
+    doc.automaticstyles.addElement(link_style)
+
+    table = Table(name="缺少docx清單")
+    doc.spreadsheet.addElement(table)
+
+    header_row = TableRow()
+    for header in ("名稱", "路徑"):
+        cell = TableCell()
+        cell.addElement(P(text=header))
+        header_row.addElement(cell)
+    table.addElement(header_row)
+
+    for dirpath in dirs_missing_docx:
+        name = os.path.relpath(dirpath, root).replace("\\", "/")
+        uri = Path(dirpath).resolve().as_uri()
+
+        name_cell = TableCell()
+        name_cell.addElement(P(text=name))
+        table_row = TableRow()
+        table_row.addElement(name_cell)
+
+        link_cell = TableCell()
+        link_p = P()
+        link_a = A(type="simple", href=uri, stylename=link_style)
+        link_a.addText(name)
+        link_p.addElement(link_a)
+        link_cell.addElement(link_p)
+        table_row.addElement(link_cell)
+
+        table.addElement(table_row)
+
+    out_path = os.path.join(root, "缺少docx清單.ods")
+    doc.save(out_path)
+    return out_path
+
+
 def get_root():
     cwd = os.getcwd()
     if getattr(sys, "frozen", False):
@@ -221,6 +278,10 @@ def main():
     image_path = generate_missing_docx_image(root, dirs_missing_docx)
     if image_path:
         print(f"已產生圖片: {rel_path(root, image_path)}")
+
+    ods_path = generate_missing_docx_ods(root, dirs_missing_docx)
+    if ods_path:
+        print(f"已產生 ods 清單: {rel_path(root, ods_path)}")
 
 
 if __name__ == "__main__":

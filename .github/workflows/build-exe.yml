@@ -18,7 +18,7 @@ jobs:
           python-version: "3.14"
 
       - name: Install dependencies
-        run: pip install pyinstaller pillow
+        run: pip install pyinstaller pillow odfpy
 
       - name: Build EXE
         run: pyinstaller --onedir --noupx --clean --name find_folder_docx main.py
