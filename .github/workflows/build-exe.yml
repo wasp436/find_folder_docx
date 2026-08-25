@@ -6,7 +6,7 @@ on:
   workflow_dispatch: {}
 
 jobs:
-  build:
+  build-pyinstaller:
     runs-on: windows-latest
     steps:
       - name: Checkout
@@ -26,5 +26,47 @@ jobs:
       - name: Upload EXE artifact
         uses: actions/upload-artifact@v7
         with:
-          name: docx_count-windows
+          name: docx_count-pyinstaller-windows
+          path: dist/docx_count
+
+  build-nuitka:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+
+      - name: Install dependencies
+        run: pip install nuitka pillow odfpy
+
+      - name: Build EXE
+        run: >
+          python -m nuitka
+          --standalone
+          --assume-yes-for-downloads
+          --windows-console-mode=force
+          --output-dir=dist
+          --output-filename=docx_count.exe
+          --company-name=""
+          --product-name="docx 完整性檢查工具"
+          --file-description="docx 完整性檢查工具"
+          --file-version=1.0.0.0
+          --product-version=1.0.0.0
+          --include-package=PIL
+          --include-package=odf
+          --include-package=defusedxml
+          main.py
+
+      - name: Rename output folder
+        shell: pwsh
+        run: Rename-Item -Path dist/main.dist -NewName docx_count
+
+      - name: Upload EXE artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: docx_count-nuitka-windows
           path: dist/docx_count
