@@ -21,7 +21,7 @@ jobs:
         run: pip install pyinstaller pillow odfpy
 
       - name: Build EXE
-        run: pyinstaller --onedir --noupx --clean --name docx_count main.py
+        run: pyinstaller --onedir --noupx --clean --name docx_count --version-file version_info.txt main.py
 
       - name: Upload EXE artifact
         uses: actions/upload-artifact@v7
