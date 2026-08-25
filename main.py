@@ -156,19 +156,21 @@ def generate_missing_docx_ods(root, dirs_missing_docx):
     table.addElement(header_row)
 
     for dirpath in dirs_missing_docx:
-        name = os.path.relpath(dirpath, root).replace("\\", "/")
+        rel_parts = os.path.relpath(dirpath, root).replace("\\", "/").split("/")
+        top_name = rel_parts[0]
+        leaf_name = rel_parts[-1]
         uri = Path(dirpath).resolve().as_uri()
         if not uri.endswith("/"):
             uri += "/"
 
         name_cell = TableCell()
-        name_cell.addElement(P(text=name))
+        name_cell.addElement(P(text=top_name))
         table_row = TableRow()
         table_row.addElement(name_cell)
 
-        formula = f"of:=HYPERLINK({formula_literal(uri)};{formula_literal(name)})"
-        link_cell = TableCell(formula=formula, valuetype="string", stringvalue=name)
-        link_cell.addElement(P(text=name))
+        formula = f"of:=HYPERLINK({formula_literal(uri)};{formula_literal(leaf_name)})"
+        link_cell = TableCell(formula=formula, valuetype="string", stringvalue=leaf_name)
+        link_cell.addElement(P(text=leaf_name))
         table_row.addElement(link_cell)
 
         table.addElement(table_row)
