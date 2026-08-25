@@ -1,6 +1,11 @@
 import os
+from datetime import date
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".gif", ".tif", ".tiff"}
+
+
+def output_basename():
+    return f"{date.today():%Y-%m-%d}_照片不完整清單"
 
 CJK_FONT_CANDIDATES = [
     r"C:\Windows\Fonts\msjh.ttc",
@@ -120,7 +125,7 @@ def generate_missing_docx_image(root, dirs_missing_docx):
         draw.text((pad + 18, y + 9), name, font=f_item, fill=white)
         y += line_h
 
-    out_path = os.path.join(root, "缺少docx清單.png")
+    out_path = os.path.join(root, f"{output_basename()}.png")
     img.save(out_path)
     return out_path
 
@@ -203,7 +208,7 @@ def generate_missing_docx_ods(root, dirs_missing_docx):
 
         table.addElement(table_row)
 
-    out_path = os.path.join(root, "缺少docx清單.ods")
+    out_path = os.path.join(root, f"{output_basename()}.ods")
     doc.save(out_path)
     return out_path
 
