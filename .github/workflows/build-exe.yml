@@ -51,7 +51,6 @@ jobs:
           --windows-console-mode=force
           --output-dir=dist
           --output-filename=docx_count.exe
-          --company-name=""
           --product-name="docx 完整性檢查工具"
           --file-description="docx 完整性檢查工具"
           --file-version=1.0.0.0
