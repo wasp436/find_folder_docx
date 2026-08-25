@@ -134,20 +134,16 @@ def generate_missing_docx_ods(root, dirs_missing_docx):
         from pathlib import Path
 
         from odf.opendocument import OpenDocumentSpreadsheet
-        from odf.style import Style, TextProperties
         from odf.table import Table, TableCell, TableRow
-        from odf.text import A, P
+        from odf.text import P
     except ImportError:
         print("⚠️ 未安裝 odfpy，略過 ods 產生 (pip install odfpy)")
         return None
 
-    doc = OpenDocumentSpreadsheet()
+    def formula_literal(text):
+        return '"' + text.replace('"', '""') + '"'
 
-    link_style = Style(name="Link", family="text")
-    link_style.addElement(
-        TextProperties(color="#0563C1", textunderlinestyle="solid", textunderlinetype="single")
-    )
-    doc.automaticstyles.addElement(link_style)
+    doc = OpenDocumentSpreadsheet()
 
     table = Table(name="缺少docx清單")
     doc.spreadsheet.addElement(table)
@@ -162,18 +158,17 @@ def generate_missing_docx_ods(root, dirs_missing_docx):
     for dirpath in dirs_missing_docx:
         name = os.path.relpath(dirpath, root).replace("\\", "/")
         uri = Path(dirpath).resolve().as_uri()
+        if not uri.endswith("/"):
+            uri += "/"
 
         name_cell = TableCell()
         name_cell.addElement(P(text=name))
         table_row = TableRow()
         table_row.addElement(name_cell)
 
-        link_cell = TableCell()
-        link_p = P()
-        link_a = A(type="simple", href=uri, stylename=link_style)
-        link_a.addText(name)
-        link_p.addElement(link_a)
-        link_cell.addElement(link_p)
+        formula = f"of:=HYPERLINK({formula_literal(uri)};{formula_literal(name)})"
+        link_cell = TableCell(formula=formula, valuetype="string", stringvalue=name)
+        link_cell.addElement(P(text=name))
         table_row.addElement(link_cell)
 
         table.addElement(table_row)
