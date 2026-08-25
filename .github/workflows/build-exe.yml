@@ -21,10 +21,10 @@ jobs:
         run: pip install pyinstaller pillow odfpy
 
       - name: Build EXE
-        run: pyinstaller --onedir --noupx --clean --name find_folder_docx main.py
+        run: pyinstaller --onedir --noupx --clean --name docx_count main.py
 
       - name: Upload EXE artifact
         uses: actions/upload-artifact@v7
         with:
-          name: find_folder_docx-windows
-          path: dist/find_folder_docx
+          name: docx_count-windows
+          path: dist/docx_count

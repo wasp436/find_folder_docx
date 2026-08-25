@@ -1,5 +1,4 @@
 import os
-import sys
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".gif", ".tif", ".tiff"}
 
@@ -134,7 +133,8 @@ def generate_missing_docx_ods(root, dirs_missing_docx):
         from pathlib import Path
 
         from odf.opendocument import OpenDocumentSpreadsheet
-        from odf.table import Table, TableCell, TableRow
+        from odf.style import Style, TableColumnProperties
+        from odf.table import Table, TableCell, TableColumn, TableRow
         from odf.text import P
     except ImportError:
         print("⚠️ 未安裝 odfpy，略過 ods 產生 (pip install odfpy)")
@@ -143,9 +143,44 @@ def generate_missing_docx_ods(root, dirs_missing_docx):
     def formula_literal(text):
         return '"' + text.replace('"', '""') + '"'
 
+    def char_width(text):
+        return sum(2 if ord(ch) > 0x2E80 else 1 for ch in text)
+
+    def column_width_cm(texts, min_cm=1.5, max_cm=25.0):
+        max_chars = max((char_width(t) for t in texts), default=0)
+        return max(min_cm, min(max_cm, max_chars * 0.19 + 0.5))
+
+    rows = []
+    for dirpath in dirs_missing_docx:
+        rel_parts = os.path.relpath(dirpath, root).replace("\\", "/").split("/")
+        top_name = rel_parts[0]
+        leaf_name = rel_parts[-1]
+        uri = Path(dirpath).resolve().as_uri()
+        if not uri.endswith("/"):
+            uri += "/"
+        rows.append((top_name, leaf_name, uri))
+
     doc = OpenDocumentSpreadsheet()
 
+    name_col_style = Style(name="NameCol", family="table-column")
+    name_col_style.addElement(
+        TableColumnProperties(
+            columnwidth=f"{column_width_cm(['名稱'] + [r[0] for r in rows]):.2f}cm"
+        )
+    )
+    doc.automaticstyles.addElement(name_col_style)
+
+    path_col_style = Style(name="PathCol", family="table-column")
+    path_col_style.addElement(
+        TableColumnProperties(
+            columnwidth=f"{column_width_cm(['路徑'] + [r[1] for r in rows]):.2f}cm"
+        )
+    )
+    doc.automaticstyles.addElement(path_col_style)
+
     table = Table(name="缺少docx清單")
+    table.addElement(TableColumn(stylename=name_col_style))
+    table.addElement(TableColumn(stylename=path_col_style))
     doc.spreadsheet.addElement(table)
 
     header_row = TableRow()
@@ -155,14 +190,7 @@ def generate_missing_docx_ods(root, dirs_missing_docx):
         header_row.addElement(cell)
     table.addElement(header_row)
 
-    for dirpath in dirs_missing_docx:
-        rel_parts = os.path.relpath(dirpath, root).replace("\\", "/").split("/")
-        top_name = rel_parts[0]
-        leaf_name = rel_parts[-1]
-        uri = Path(dirpath).resolve().as_uri()
-        if not uri.endswith("/"):
-            uri += "/"
-
+    for top_name, leaf_name, uri in rows:
         name_cell = TableCell()
         name_cell.addElement(P(text=top_name))
         table_row = TableRow()
@@ -180,16 +208,8 @@ def generate_missing_docx_ods(root, dirs_missing_docx):
     return out_path
 
 
-def get_root():
-    cwd = os.getcwd()
-    if getattr(sys, "frozen", False):
-        # onedir 打包後 exe 位於子資料夾中，實際目標根目錄在上一層
-        return os.path.dirname(cwd)
-    return cwd
-
-
 def main():
-    root = get_root()
+    root = os.getcwd()
 
     print("===== 檢查 Thumbs.db =====")
     thumbs_files = find_thumbs_files(root)
