@@ -1,4 +1,5 @@
 import os
+import sys
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".gif", ".tif", ".tiff"}
 
@@ -125,8 +126,16 @@ def generate_missing_docx_image(root, dirs_missing_docx):
     return out_path
 
 
+def get_root():
+    cwd = os.getcwd()
+    if getattr(sys, "frozen", False):
+        # onedir 打包後 exe 位於子資料夾中，實際目標根目錄在上一層
+        return os.path.dirname(cwd)
+    return cwd
+
+
 def main():
-    root = os.getcwd()
+    root = get_root()
 
     print("===== 檢查 Thumbs.db =====")
     thumbs_files = find_thumbs_files(root)
