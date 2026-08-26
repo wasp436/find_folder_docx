@@ -4,8 +4,8 @@ from datetime import date
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".gif", ".tif", ".tiff"}
 
 
-def output_basename():
-    return f"{date.today():%Y-%m-%d}_照片不完整清單"
+def output_basename(label):
+    return f"{date.today():%Y-%m-%d}_{label}"
 
 CJK_FONT_CANDIDATES = [
     r"C:\Windows\Fonts\msjh.ttc",
@@ -45,6 +45,27 @@ def find_empty_dirs(root):
     return empty
 
 
+def find_docx_only_dirs(root):
+    result = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+
+        is_leaf = len(dirnames) == 0
+        if not is_leaf:
+            continue
+
+        has_docx = any(f.lower().endswith(".docx") for f in filenames)
+        if not has_docx:
+            continue
+
+        has_image = any(
+            os.path.splitext(f)[1].lower() in IMAGE_EXTENSIONS for f in filenames
+        )
+        if not has_image:
+            result.append(dirpath)
+    return result
+
+
 def rel_path(root, path):
     return os.path.join(".", os.path.relpath(path, root)).replace("\\", "/")
 
@@ -54,7 +75,7 @@ def confirm_delete(prompt):
     return ans == "y"
 
 
-def generate_missing_docx_image(root, dirs_missing_docx):
+def generate_missing_docx_image(root, dirs_missing_docx, label):
     if not dirs_missing_docx:
         return None
 
@@ -125,12 +146,12 @@ def generate_missing_docx_image(root, dirs_missing_docx):
         draw.text((pad + 18, y + 9), name, font=f_item, fill=white)
         y += line_h
 
-    out_path = os.path.join(root, f"{output_basename()}.png")
+    out_path = os.path.join(root, f"{output_basename(label)}.png")
     img.save(out_path)
     return out_path
 
 
-def generate_missing_docx_ods(root, dirs_missing_docx):
+def generate_missing_docx_ods(root, dirs_missing_docx, label, sheet_name):
     if not dirs_missing_docx:
         return None
 
@@ -183,7 +204,7 @@ def generate_missing_docx_ods(root, dirs_missing_docx):
     )
     doc.automaticstyles.addElement(path_col_style)
 
-    table = Table(name="缺少docx清單")
+    table = Table(name=sheet_name)
     table.addElement(TableColumn(stylename=name_col_style))
     table.addElement(TableColumn(stylename=path_col_style))
     doc.spreadsheet.addElement(table)
@@ -208,7 +229,7 @@ def generate_missing_docx_ods(root, dirs_missing_docx):
 
         table.addElement(table_row)
 
-    out_path = os.path.join(root, f"{output_basename()}.ods")
+    out_path = os.path.join(root, f"{output_basename(label)}.ods")
     doc.save(out_path)
     return out_path
 
@@ -297,13 +318,37 @@ def main():
         f"完成度: {completion_rate:.1f}% ({leaf_dirs_with_docx}/{leaf_dirs_with_image})"
     )
 
-    image_path = generate_missing_docx_image(root, dirs_missing_docx)
+    image_path = generate_missing_docx_image(root, dirs_missing_docx, "照片不完整清單")
     if image_path:
         print(f"已產生圖片: {rel_path(root, image_path)}")
 
-    ods_path = generate_missing_docx_ods(root, dirs_missing_docx)
+    ods_path = generate_missing_docx_ods(
+        root, dirs_missing_docx, "照片不完整清單", "缺少docx清單"
+    )
     if ods_path:
         print(f"已產生 ods 清單: {rel_path(root, ods_path)}")
+    print()
+
+    print("===== 檢查只有 .docx 沒有圖片的資料夾 =====")
+    docx_only_dirs = find_docx_only_dirs(root)
+    if docx_only_dirs:
+        print("找到以下只有 .docx 沒有圖片的資料夾:")
+        for d in docx_only_dirs:
+            print(f"  {rel_path(root, d)}")
+    else:
+        print("✅ 沒有只有 .docx 沒有圖片的資料夾")
+
+    docx_only_image_path = generate_missing_docx_image(
+        root, docx_only_dirs, "只有docx沒有圖片清單"
+    )
+    if docx_only_image_path:
+        print(f"已產生圖片: {rel_path(root, docx_only_image_path)}")
+
+    docx_only_ods_path = generate_missing_docx_ods(
+        root, docx_only_dirs, "只有docx沒有圖片清單", "只有docx沒有圖片清單"
+    )
+    if docx_only_ods_path:
+        print(f"已產生 ods 清單: {rel_path(root, docx_only_ods_path)}")
 
 
 if __name__ == "__main__":
