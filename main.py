@@ -66,6 +66,13 @@ def find_docx_only_dirs(root):
     return result
 
 
+def render_progress_bar(done, total, width=30):
+    filled = int(width * done / total) if total else 0
+    bar = "█" * filled + "-" * (width - filled)
+    pct = done / total * 100 if total else 0.0
+    return f"[{bar}] {pct:.1f}% ({done}/{total})"
+
+
 def rel_path(root, path):
     return os.path.join(".", os.path.relpath(path, root)).replace("\\", "/")
 
@@ -294,29 +301,11 @@ def main():
         else:
             dirs_missing_docx.append(dirpath)
 
-    for dirpath in dirs_with_docx:
-        print(f"✅ {rel_path(root, dirpath)}")
-    for dirpath in dirs_missing_docx:
-        print(f"❌ {rel_path(root, dirpath)}")
-
     leaf_dirs_with_image = len(dirs_with_docx) + len(dirs_missing_docx)
     leaf_dirs_missing_docx = len(dirs_missing_docx)
-    print()
-
     leaf_dirs_with_docx = leaf_dirs_with_image - leaf_dirs_missing_docx
-    completion_rate = (
-        leaf_dirs_with_docx / leaf_dirs_with_image * 100
-        if leaf_dirs_with_image > 0
-        else 0.0
-    )
 
-    print("===== 統計結果 =====")
-    print(f"根目錄: {root.replace('\\', '/')}")
-    print(f"有圖片的目錄數: {leaf_dirs_with_image}")
-    print(f"有圖片但無 .docx 的目錄數: {leaf_dirs_missing_docx}")
-    print(
-        f"完成度: {completion_rate:.1f}% ({leaf_dirs_with_docx}/{leaf_dirs_with_image})"
-    )
+    print(render_progress_bar(leaf_dirs_with_docx, leaf_dirs_with_image))
 
     image_path = generate_missing_docx_image(root, dirs_missing_docx, "照片不完整清單")
     if image_path:
@@ -331,12 +320,7 @@ def main():
 
     print("===== 檢查只有 .docx 沒有圖片的資料夾 =====")
     docx_only_dirs = find_docx_only_dirs(root)
-    if docx_only_dirs:
-        print("找到以下只有 .docx 沒有圖片的資料夾:")
-        for d in docx_only_dirs:
-            print(f"  {rel_path(root, d)}")
-    else:
-        print("✅ 沒有只有 .docx 沒有圖片的資料夾")
+    print(render_progress_bar(leaf_dirs_with_image - len(docx_only_dirs), leaf_dirs_with_image))
 
     docx_only_image_path = generate_missing_docx_image(
         root, docx_only_dirs, "只有docx沒有圖片清單"
