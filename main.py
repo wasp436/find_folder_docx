@@ -246,7 +246,7 @@ def main():
         root,
         [
             (dirs_missing_docx, "缺少圖片"),
-            (missing_material_dirs, "缺領料單"),
+            (missing_material_dirs, "缺少領料單"),
             (empty_dirs, "空資料夾"),
             (docx_only_dirs, "只有docx沒有圖片(需要把圖片另存出來)"),
         ],
