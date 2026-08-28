@@ -18,7 +18,7 @@ jobs:
           python-version: "3.14"
 
       - name: Install dependencies
-        run: pip install pyinstaller pillow odfpy
+        run: pip install pyinstaller odfpy
 
       - name: Build EXE
         run: pyinstaller --onedir --noupx --clean --name docx_count --version-file version_info.txt main.py
@@ -41,7 +41,7 @@ jobs:
           python-version: "3.14"
 
       - name: Install dependencies
-        run: pip install nuitka pillow odfpy
+        run: pip install nuitka odfpy
 
       - name: Build EXE
         run: >
@@ -55,7 +55,6 @@ jobs:
           --file-description="docx 完整性檢查工具"
           --file-version=1.0.0.0
           --product-version=1.0.0.0
-          --include-package=PIL
           --include-package=odf
           --include-package=defusedxml
           main.py

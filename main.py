@@ -7,22 +7,6 @@ IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".gif", ".tif", ".tiff"}
 def output_basename(label):
     return f"{date.today():%Y-%m-%d}_{label}"
 
-CJK_FONT_CANDIDATES = [
-    r"C:\Windows\Fonts\msjh.ttc",
-    r"C:\Windows\Fonts\mingliu.ttc",
-    r"C:\Windows\Fonts\kaiu.ttf",
-    "/System/Library/Fonts/PingFang.ttc",
-    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-    "/usr/share/fonts/truetype/arphic/uming.ttc",
-]
-
-
-def find_cjk_font():
-    for path in CJK_FONT_CANDIDATES:
-        if os.path.isfile(path):
-            return path
-    return None
-
 
 def find_thumbs_files(root):
     found = []
@@ -43,6 +27,21 @@ def find_empty_dirs(root):
         if not dirnames and not filenames:
             empty.append(dirpath)
     return empty
+
+
+def path_is_within(path, ancestor):
+    return path == ancestor or path.startswith(ancestor + os.sep)
+
+
+def find_dirs_by_name_keyword(root, keyword):
+    result = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+        if dirpath == root:
+            continue
+        if keyword in os.path.basename(dirpath):
+            result.append(dirpath)
+    return result
 
 
 def find_docx_only_dirs(root):
@@ -66,112 +65,16 @@ def find_docx_only_dirs(root):
     return result
 
 
-def render_progress_bar(done, total, width=30):
-    filled = int(width * done / total) if total else 0
-    bar = "█" * filled + "-" * (width - filled)
-    pct = done / total * 100 if total else 0.0
-    return f"[{bar}] {pct:.1f}% ({done}/{total})"
-
-
 def rel_path(root, path):
     return os.path.join(".", os.path.relpath(path, root)).replace("\\", "/")
 
 
-def confirm_delete(prompt):
-    ans = input(prompt).strip().lower()
-    return ans == "y"
+def _add_dirs_sheet(doc, root, dirs, sheet_name):
+    from pathlib import Path
 
-
-def generate_missing_docx_image(root, dirs_missing_docx, label):
-    if not dirs_missing_docx:
-        return None
-
-    try:
-        from PIL import Image, ImageDraw, ImageFont
-    except ImportError:
-        print("⚠️ 未安裝 Pillow，略過圖片產生 (pip install pillow)")
-        return None
-
-    font_reg_path = find_cjk_font()
-    if not font_reg_path:
-        print("⚠️ 找不到可用的中文字型，略過圖片產生")
-        return None
-
-    names = [os.path.relpath(d, root).replace("\\", "/") for d in dirs_missing_docx]
-    root_parts = [p for p in root.replace("\\", "/").split("/") if p]
-    root_display = "/".join(root_parts[-2:])
-
-    width = 720
-    pad = 36
-    line_h = 56
-    path_line_h = 28
-
-    bg = (17, 20, 24)
-    card = (26, 30, 36)
-    white = (235, 238, 242)
-    gray = (150, 158, 168)
-
-    dummy_img = Image.new("RGB", (10, 10))
-    dummy_draw = ImageDraw.Draw(dummy_img)
-
-    f_path = ImageFont.truetype(font_reg_path, 20)
-    f_sub = ImageFont.truetype(font_reg_path, 24)
-    f_item = ImageFont.truetype(font_reg_path, 26)
-
-    max_text_width = width - pad * 2
-    path_lines = []
-    current = ""
-    for ch in root_display:
-        candidate = current + ch
-        if not current or dummy_draw.textlength(candidate, font=f_path) <= max_text_width:
-            current = candidate
-        else:
-            path_lines.append(current)
-            current = ch
-    if current:
-        path_lines.append(current)
-
-    header_h = pad + len(path_lines) * path_line_h + 16 + 46
-    footer_h = 20
-    height = header_h + line_h * len(names) + footer_h
-
-    img = Image.new("RGB", (width, height), bg)
-    draw = ImageDraw.Draw(img)
-
-    y = pad
-    for line in path_lines:
-        draw.text((pad, y), line, font=f_path, fill=gray)
-        y += path_line_h
-    y += 16
-    draw.text((pad, y), f"共 {len(names)} 個", font=f_sub, fill=gray)
-    y += 46
-
-    for name in names:
-        draw.rounded_rectangle(
-            [pad, y, width - pad, y + line_h - 10], radius=10, fill=card
-        )
-        draw.text((pad + 18, y + 9), name, font=f_item, fill=white)
-        y += line_h
-
-    out_path = os.path.join(root, f"{output_basename(label)}.png")
-    img.save(out_path)
-    return out_path
-
-
-def generate_missing_docx_ods(root, dirs_missing_docx, label, sheet_name):
-    if not dirs_missing_docx:
-        return None
-
-    try:
-        from pathlib import Path
-
-        from odf.opendocument import OpenDocumentSpreadsheet
-        from odf.style import Style, TableColumnProperties
-        from odf.table import Table, TableCell, TableColumn, TableRow
-        from odf.text import P
-    except ImportError:
-        print("⚠️ 未安裝 odfpy，略過 ods 產生 (pip install odfpy)")
-        return None
+    from odf.style import Style, TableColumnProperties
+    from odf.table import Table, TableCell, TableColumn, TableRow
+    from odf.text import P
 
     def formula_literal(text):
         return '"' + text.replace('"', '""') + '"'
@@ -184,7 +87,7 @@ def generate_missing_docx_ods(root, dirs_missing_docx, label, sheet_name):
         return max(min_cm, min(max_cm, max_chars * 0.19 + 0.5))
 
     rows = []
-    for dirpath in dirs_missing_docx:
+    for dirpath in dirs:
         rel_parts = os.path.relpath(dirpath, root).replace("\\", "/").split("/")
         top_name = rel_parts[0]
         leaf_name = rel_parts[-1]
@@ -193,9 +96,7 @@ def generate_missing_docx_ods(root, dirs_missing_docx, label, sheet_name):
             uri += "/"
         rows.append((top_name, leaf_name, uri))
 
-    doc = OpenDocumentSpreadsheet()
-
-    name_col_style = Style(name="NameCol", family="table-column")
+    name_col_style = Style(name=f"{sheet_name}NameCol", family="table-column")
     name_col_style.addElement(
         TableColumnProperties(
             columnwidth=f"{column_width_cm(['名稱'] + [r[0] for r in rows]):.2f}cm"
@@ -203,7 +104,7 @@ def generate_missing_docx_ods(root, dirs_missing_docx, label, sheet_name):
     )
     doc.automaticstyles.addElement(name_col_style)
 
-    path_col_style = Style(name="PathCol", family="table-column")
+    path_col_style = Style(name=f"{sheet_name}PathCol", family="table-column")
     path_col_style.addElement(
         TableColumnProperties(
             columnwidth=f"{column_width_cm(['路徑'] + [r[1] for r in rows]):.2f}cm"
@@ -230,11 +131,29 @@ def generate_missing_docx_ods(root, dirs_missing_docx, label, sheet_name):
         table_row.addElement(name_cell)
 
         formula = f"of:=HYPERLINK({formula_literal(uri)};{formula_literal(leaf_name)})"
-        link_cell = TableCell(formula=formula, valuetype="string", stringvalue=leaf_name)
+        link_cell = TableCell(
+            formula=formula, valuetype="string", stringvalue=leaf_name
+        )
         link_cell.addElement(P(text=leaf_name))
         table_row.addElement(link_cell)
 
         table.addElement(table_row)
+
+
+def generate_combined_ods(root, sections, label):
+    sections = [(dirs, sheet_name) for dirs, sheet_name in sections if dirs]
+    if not sections:
+        return None
+
+    try:
+        from odf.opendocument import OpenDocumentSpreadsheet
+    except ImportError:
+        print("⚠️ 未安裝 odfpy，略過 ods 產生 (pip install odfpy)")
+        return None
+
+    doc = OpenDocumentSpreadsheet()
+    for dirs, sheet_name in sections:
+        _add_dirs_sheet(doc, root, dirs, sheet_name)
 
     out_path = os.path.join(root, f"{output_basename(label)}.ods")
     doc.save(out_path)
@@ -250,13 +169,11 @@ def main():
         print("找到以下 Thumbs.db 檔案:")
         for f in thumbs_files:
             print(f"  {rel_path(root, f)}")
-        if confirm_delete("是否刪除以上 Thumbs.db 檔案? (y/N): "):
-            for f in thumbs_files:
-                try:
-                    os.remove(f)
-                    print(f"✅ 已刪除: {rel_path(root, f)}")
-                except OSError:
-                    pass
+            try:
+                os.remove(f)
+                print(f"✅ 已刪除: {rel_path(root, f)}")
+            except OSError:
+                pass
     else:
         print("✅ 沒有 Thumbs.db")
     print()
@@ -267,19 +184,21 @@ def main():
         print("找到以下空資料夾:")
         for d in empty_dirs:
             print(f"  {rel_path(root, d)}")
-        if confirm_delete("是否刪除以上空資料夾? (y/N): "):
-            for d in empty_dirs:
-                try:
-                    os.rmdir(d)
-                    print(f"✅ 已刪除: {rel_path(root, d)}")
-                except OSError:
-                    pass
     else:
         print("✅ 沒有空資料夾")
     print()
 
+    print("===== 檢查資料夾名稱含「缺領料單」 =====")
+    missing_material_dirs = find_dirs_by_name_keyword(root, "缺領料單")
+    if missing_material_dirs:
+        print("找到以下資料夾:")
+        for d in missing_material_dirs:
+            print(f"  {rel_path(root, d)}")
+    else:
+        print("✅ 沒有資料夾名稱包含「缺領料單」")
+    print()
+
     print("===== 檢查 .docx =====")
-    dirs_with_docx = []
     dirs_missing_docx = []
 
     for dirpath, dirnames, filenames in os.walk(root):
@@ -296,43 +215,45 @@ def main():
             continue
 
         has_docx = any(f.lower().endswith(".docx") for f in filenames)
-        if has_docx:
-            dirs_with_docx.append(dirpath)
-        else:
+        if not has_docx:
             dirs_missing_docx.append(dirpath)
 
-    leaf_dirs_with_image = len(dirs_with_docx) + len(dirs_missing_docx)
-    leaf_dirs_missing_docx = len(dirs_missing_docx)
-    leaf_dirs_with_docx = leaf_dirs_with_image - leaf_dirs_missing_docx
+    dirs_missing_docx = [
+        d
+        for d in dirs_missing_docx
+        if not any(path_is_within(d, m) for m in missing_material_dirs)
+    ]
 
-    print(render_progress_bar(leaf_dirs_with_docx, leaf_dirs_with_image))
-
-    image_path = generate_missing_docx_image(root, dirs_missing_docx, "照片不完整清單")
-    if image_path:
-        print(f"已產生圖片: {rel_path(root, image_path)}")
-
-    ods_path = generate_missing_docx_ods(
-        root, dirs_missing_docx, "照片不完整清單", "缺少docx清單"
-    )
-    if ods_path:
-        print(f"已產生 ods 清單: {rel_path(root, ods_path)}")
+    if dirs_missing_docx:
+        print("找到以下缺少 .docx 的資料夾:")
+        for d in dirs_missing_docx:
+            print(f"  {rel_path(root, d)}")
+    else:
+        print("✅ 沒有缺少 .docx 的資料夾")
     print()
 
     print("===== 檢查只有 .docx 沒有圖片的資料夾 =====")
     docx_only_dirs = find_docx_only_dirs(root)
-    print(render_progress_bar(leaf_dirs_with_image - len(docx_only_dirs), leaf_dirs_with_image))
+    if docx_only_dirs:
+        print("找到以下只有 .docx 沒有圖片的資料夾:")
+        for d in docx_only_dirs:
+            print(f"  {rel_path(root, d)}")
+    else:
+        print("✅ 沒有只有 .docx 沒有圖片的資料夾")
+    print()
 
-    docx_only_image_path = generate_missing_docx_image(
-        root, docx_only_dirs, "只有docx沒有圖片清單"
+    ods_path = generate_combined_ods(
+        root,
+        [
+            (dirs_missing_docx, "缺少docx"),
+            (missing_material_dirs, "缺領料單"),
+            (empty_dirs, "空資料夾"),
+            (docx_only_dirs, "只有docx沒有圖片(需要把圖片另存出來)"),
+        ],
+        "檢查清單",
     )
-    if docx_only_image_path:
-        print(f"已產生圖片: {rel_path(root, docx_only_image_path)}")
-
-    docx_only_ods_path = generate_missing_docx_ods(
-        root, docx_only_dirs, "只有docx沒有圖片清單", "只有docx沒有圖片清單"
-    )
-    if docx_only_ods_path:
-        print(f"已產生 ods 清單: {rel_path(root, docx_only_ods_path)}")
+    if ods_path:
+        print(f"已產生 ods 清單: {rel_path(root, ods_path)}")
 
 
 if __name__ == "__main__":
