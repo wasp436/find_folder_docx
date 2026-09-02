@@ -89,8 +89,11 @@ def _add_dirs_sheet(doc, root, dirs, sheet_name):
     rows = []
     for dirpath in dirs:
         rel_parts = os.path.relpath(dirpath, root).replace("\\", "/").split("/")
-        top_name = rel_parts[0]
         leaf_name = rel_parts[-1]
+        if len(rel_parts) >= 3:
+            top_name = "/".join(rel_parts[:2])
+        else:
+            top_name = rel_parts[0]
         uri = Path(dirpath).resolve().as_uri()
         if not uri.endswith("/"):
             uri += "/"
