@@ -34,12 +34,17 @@ def path_is_within(path, ancestor):
 
 
 def find_dirs_by_name_keyword(root, keyword):
+    return find_dirs_by_name_keywords(root, [keyword])
+
+
+def find_dirs_by_name_keywords(root, keywords):
     result = []
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [d for d in dirnames if not d.startswith(".")]
         if dirpath == root:
             continue
-        if keyword in os.path.basename(dirpath):
+        name = os.path.basename(dirpath)
+        if any(keyword in name for keyword in keywords):
             result.append(dirpath)
     return result
 
@@ -171,6 +176,7 @@ def main():
     empty_dirs = find_empty_dirs(root)
 
     missing_material_dirs = find_dirs_by_name_keyword(root, "領料單")
+    has_or_dirs = find_dirs_by_name_keywords(root, ["(", ")"])
 
     dirs_missing_docx = []
 
@@ -204,6 +210,7 @@ def main():
         [
             (dirs_missing_docx, "缺少圖片"),
             (missing_material_dirs, "領料單"),
+            (has_or_dirs, "名稱含(或)"),
             (empty_dirs, "空資料夾"),
             (docx_only_dirs, "只有docx沒有圖片(需要把圖片另存出來)"),
         ],
