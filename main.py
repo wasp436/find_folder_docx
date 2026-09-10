@@ -65,10 +65,6 @@ def find_docx_only_dirs(root):
     return result
 
 
-def rel_path(root, path):
-    return os.path.join(".", os.path.relpath(path, root)).replace("\\", "/")
-
-
 def _add_dirs_sheet(doc, root, dirs, sheet_name):
     from pathlib import Path
 
@@ -151,7 +147,6 @@ def generate_combined_ods(root, sections, label):
     try:
         from odf.opendocument import OpenDocumentSpreadsheet
     except ImportError:
-        print("⚠️ 未安裝 odfpy，略過 ods 產生 (pip install odfpy)")
         return None
 
     doc = OpenDocumentSpreadsheet()
@@ -166,42 +161,17 @@ def generate_combined_ods(root, sections, label):
 def main():
     root = os.getcwd()
 
-    print("===== 檢查 Thumbs.db =====")
     thumbs_files = find_thumbs_files(root)
-    if thumbs_files:
-        print("找到以下 Thumbs.db 檔案:")
-        for f in thumbs_files:
-            print(f"  {rel_path(root, f)}")
-            try:
-                os.remove(f)
-                print(f"✅ 已刪除: {rel_path(root, f)}")
-            except OSError:
-                pass
-    else:
-        print("✅ 沒有 Thumbs.db")
-    print()
+    for f in thumbs_files:
+        try:
+            os.remove(f)
+        except OSError:
+            pass
 
-    print("===== 檢查空資料夾 =====")
     empty_dirs = find_empty_dirs(root)
-    if empty_dirs:
-        print("找到以下空資料夾:")
-        for d in empty_dirs:
-            print(f"  {rel_path(root, d)}")
-    else:
-        print("✅ 沒有空資料夾")
-    print()
 
-    print("===== 檢查資料夾名稱含「缺領料單」 =====")
-    missing_material_dirs = find_dirs_by_name_keyword(root, "缺領料單")
-    if missing_material_dirs:
-        print("找到以下資料夾:")
-        for d in missing_material_dirs:
-            print(f"  {rel_path(root, d)}")
-    else:
-        print("✅ 沒有資料夾名稱包含「缺領料單」")
-    print()
+    missing_material_dirs = find_dirs_by_name_keyword(root, "領料單")
 
-    print("===== 檢查 .docx =====")
     dirs_missing_docx = []
 
     for dirpath, dirnames, filenames in os.walk(root):
@@ -227,38 +197,19 @@ def main():
         if not any(path_is_within(d, m) for m in missing_material_dirs)
     ]
 
-    if dirs_missing_docx:
-        print("找到以下缺少 .docx 的資料夾:")
-        for d in dirs_missing_docx:
-            print(f"  {rel_path(root, d)}")
-    else:
-        print("✅ 沒有缺少 .docx 的資料夾")
-    print()
-
-    print("===== 檢查只有 .docx 沒有圖片的資料夾 =====")
     docx_only_dirs = find_docx_only_dirs(root)
-    if docx_only_dirs:
-        print("找到以下只有 .docx 沒有圖片的資料夾:")
-        for d in docx_only_dirs:
-            print(f"  {rel_path(root, d)}")
-    else:
-        print("✅ 沒有只有 .docx 沒有圖片的資料夾")
-    print()
 
-    ods_path = generate_combined_ods(
+    generate_combined_ods(
         root,
         [
             (dirs_missing_docx, "缺少圖片"),
-            (missing_material_dirs, "缺少領料單"),
+            (missing_material_dirs, "領料單"),
             (empty_dirs, "空資料夾"),
             (docx_only_dirs, "只有docx沒有圖片(需要把圖片另存出來)"),
         ],
         "檢查清單",
     )
-    if ods_path:
-        print(f"已產生 ods 清單: {rel_path(root, ods_path)}")
 
 
 if __name__ == "__main__":
     main()
-    input("\n按 Enter 鍵結束...")

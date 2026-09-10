@@ -10,3 +10,4 @@ wheels/
 .venv
 
 2026/*
+*.ods
