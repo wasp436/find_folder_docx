@@ -18,13 +18,13 @@ jobs:
           python-version: "3.14"
 
       - name: Install dependencies
-        run: pip install pyinstaller odfpy
+        run: pip install pyinstaller
 
       - name: Build EXE
-        run: pyinstaller --onedir --noupx --clean --name docx_count --version-file version_info.txt main.py
+        run: pyinstaller --onedir --noupx --clean --name docx --version-file version_info.txt main.py
 
       - name: Upload EXE artifact
         uses: actions/upload-artifact@v7
         with:
-          name: docx_count-pyinstaller-windows
-          path: dist/docx_count
+          name: docx-pyinstaller-windows
+          path: dist/docx

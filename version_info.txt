@@ -18,9 +18,9 @@ VSVersionInfo(
         [StringStruct(u'CompanyName', u''),
         StringStruct(u'FileDescription', u'docx 完整性檢查工具'),
         StringStruct(u'FileVersion', u'1.0.0.0'),
-        StringStruct(u'InternalName', u'docx_count'),
+        StringStruct(u'InternalName', u'docx'),
         StringStruct(u'LegalCopyright', u''),
-        StringStruct(u'OriginalFilename', u'docx_count.exe'),
+        StringStruct(u'OriginalFilename', u'docx.exe'),
         StringStruct(u'ProductName', u'docx 完整性檢查工具'),
         StringStruct(u'ProductVersion', u'1.0.0.0')])
       ]),
