@@ -9,8 +9,8 @@ wheels/
 # Virtual environments
 .venv
 
-2026/*
 *.ods
+*.xlsx
 
 # 人名名單（含個資，不進版控）
 123.txt

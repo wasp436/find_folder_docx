@@ -10,8 +10,16 @@ from pathlib import Path
 from xml.sax.saxutils import escape, quoteattr
 
 IMAGE_EXTENSIONS = {
-    ".jpg", ".jpeg", ".png", ".gif", ".bmp",
-    ".tiff", ".tif", ".webp", ".heic", ".heif",
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".gif",
+    ".bmp",
+    ".tiff",
+    ".tif",
+    ".webp",
+    ".heic",
+    ".heif",
 }
 
 # 民國日期格式：115.12.5 / 115-12-5 / 115_12_05 等（年 2~3 碼，月、日 1~2 碼）
@@ -19,6 +27,9 @@ DATE_PATTERN = re.compile(r"(?<!\d)(\d{2,3})[.\-_](\d{1,2})[.\-_](\d{1,2})(?!\d)
 
 # 資料夾名稱裡的月.日格式：08.01 / 8.1 等（不含年份）
 FOLDER_DATE_PATTERN = re.compile(r"(?<!\d)(\d{1,2})[.\-_](\d{1,2})(?!\d)")
+
+# docx 檔名開頭的西元日期格式：20260801_XXXX
+DOCX_NAME_DATE_PATTERN = re.compile(r"^(\d{4})(\d{2})(\d{2})_")
 
 # 人名名單檔案，需與 main.py（或打包後的 exe）放在同一個要檢查的資料夾內
 NAMES_FILENAME = "123.txt"
@@ -62,6 +73,18 @@ def find_ancestor_month_day(folder: Path, root: Path):
         current = current.parent
 
 
+def find_grandparent_month_day(docx_path: Path, root: Path):
+    """找出 docx 檔案上上一層資料夾（含往上找）的「月.日」，回傳 (month, day) 或 None。
+
+    例如 08.01/工作項目/xxx.docx，會比對到 08.01 這一層。
+    若上上一層已經在 root 之外（docx 放太淺），則不進行比對。
+    """
+    grandparent = docx_path.parent.parent
+    if grandparent != root and root not in grandparent.parents:
+        return None
+    return find_ancestor_month_day(grandparent, root)
+
+
 def output_basename(label):
     return f"{date.today():%Y-%m-%d}_{label}"
 
@@ -73,8 +96,7 @@ def natural_sort_key(text: str):
     """自然排序鍵：讓字串中的數字依數值大小排序（例如 08.01 排在 08.15 之前），
     而非逐字元比較（會讓 08.15 排在 08.2 之前）。"""
     return [
-        int(part) if part.isdigit() else part.lower()
-        for part in _NUM_SPLIT.split(text)
+        int(part) if part.isdigit() else part.lower() for part in _NUM_SPLIT.split(text)
     ]
 
 
@@ -95,6 +117,7 @@ def path_link(path: Path, display: str) -> Hyperlink:
 
 
 # ---------- 資料夾結構檢查 ----------
+
 
 def find_thumbs_files(root):
     found = []
@@ -173,6 +196,7 @@ def dir_list_rows(root, dirs):
 
 
 # ---------- 圖片檔名日期檢查 ----------
+
 
 def find_date_in_filename(filename: str):
     """在檔名（不含副檔名）中尋找民國日期格式。
@@ -256,7 +280,10 @@ def build_date_check_sheets(root):
 
         date_mismatch = False
         folder_month_day = find_ancestor_month_day(folder, root_path)
-        if folder_month_day is not None and (result["month"], result["day"]) != folder_month_day:
+        if (
+            folder_month_day is not None
+            and (result["month"], result["day"]) != folder_month_day
+        ):
             stats["日期與資料夾不符檔名"].append(path.name)
             date_mismatch = True
 
@@ -308,7 +335,101 @@ def build_date_check_sheets(root):
     ]
 
 
+# ---------- docx 檔名與資料夾日期比對 ----------
+
+
+def scan_docx_files(root):
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+        for f in filenames:
+            if f.lower().endswith(".docx"):
+                yield Path(dirpath) / f
+
+
+def check_docx_name_against_folder(path: Path, root: Path):
+    """比對單一 docx 檔名開頭日期，是否與其上上一層「月.日」資料夾相符。
+
+    回傳 dict：資料夾日期顯示字串、檔名日期顯示字串、是否合格、不合格原因。
+    """
+    folder_month_day = find_grandparent_month_day(path, root)
+    folder_date_display = (
+        f"{folder_month_day[0]:02d}.{folder_month_day[1]:02d}"
+        if folder_month_day is not None
+        else ""
+    )
+
+    match = DOCX_NAME_DATE_PATTERN.match(path.stem)
+    if match is None:
+        return {
+            "folder_date": folder_date_display,
+            "file_date": "",
+            "qualified": False,
+            "reason": "檔名開頭非「YYYYMMDD_」格式",
+        }
+
+    year, month, day = (int(g) for g in match.groups())
+    file_date_display = f"{year:04d}{month:02d}{day:02d}"
+
+    if folder_month_day is None:
+        return {
+            "folder_date": folder_date_display,
+            "file_date": file_date_display,
+            "qualified": False,
+            "reason": "找不到上層「月.日」資料夾",
+        }
+
+    if year != date.today().year:
+        return {
+            "folder_date": folder_date_display,
+            "file_date": file_date_display,
+            "qualified": False,
+            "reason": f"年份不是 {date.today().year}",
+        }
+
+    if (month, day) != folder_month_day:
+        return {
+            "folder_date": folder_date_display,
+            "file_date": file_date_display,
+            "qualified": False,
+            "reason": "月日與資料夾不符",
+        }
+
+    return {
+        "folder_date": folder_date_display,
+        "file_date": file_date_display,
+        "qualified": True,
+        "reason": "",
+    }
+
+
+def build_docx_name_check_sheets(root):
+    root_path = Path(root)
+    rows = []
+    for path in sorted(scan_docx_files(root), key=lambda p: natural_sort_key(str(p))):
+        result = check_docx_name_against_folder(path, root_path)
+        try:
+            display = str(path.relative_to(root_path))
+        except ValueError:
+            display = str(path)
+        rows.append(
+            {
+                "docx路徑": path_link(path, display),
+                "資料夾日期(月.日)": result["folder_date"],
+                "檔名日期": result["file_date"],
+                "是否合格": "合格" if result["qualified"] else "不合格",
+                "不合格原因": result["reason"],
+            }
+        )
+
+    fieldnames = ["docx路徑", "資料夾日期(月.日)", "檔名日期", "是否合格", "不合格原因"]
+
+    return [
+        ("docx檔名與資料夾比對", fieldnames, rows),
+    ]
+
+
 # ---------- XLSX 寫出（純標準庫，不依賴 openpyxl 等第三方套件） ----------
+
 
 def _col_letter(index: int) -> str:
     """0-based 欄位索引轉成 Excel 欄位字母（0->A, 25->Z, 26->AA ...）。"""
@@ -376,9 +497,7 @@ def _build_sheet_xml(fieldnames: list, rows: list):
         return f'<c r="{ref}"{style_attr} t="inlineStr"><is><t xml:space="preserve">{text}</t></is></c>'
 
     row_xml_parts = []
-    header_cells = "".join(
-        cell_xml(1, i, name) for i, name in enumerate(fieldnames)
-    )
+    header_cells = "".join(cell_xml(1, i, name) for i, name in enumerate(fieldnames))
     row_xml_parts.append(f'<row r="1">{header_cells}</row>')
     for r, row in enumerate(rows, start=2):
         cells = "".join(
@@ -399,7 +518,7 @@ def _build_sheet_xml(fieldnames: list, rows: list):
                 'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" '
                 f'Target={quoteattr(href)} TargetMode="External"/>'
             )
-        hyperlinks_xml = f'<hyperlinks>{"".join(links_xml_parts)}</hyperlinks>'
+        hyperlinks_xml = f"<hyperlinks>{''.join(links_xml_parts)}</hyperlinks>"
 
     last_col = _col_letter(col_count - 1)
     last_row = len(rows) + 1
@@ -586,6 +705,7 @@ def main():
     docx_only_dirs = find_docx_only_dirs(root)
 
     date_check_sheets = build_date_check_sheets(root)
+    docx_name_check_sheets = build_docx_name_check_sheets(root)
 
     generate_combined_xlsx(
         root,
@@ -596,7 +716,7 @@ def main():
             (empty_dirs, "空資料夾"),
             (docx_only_dirs, "只有docx沒有圖片(需要另存圖片)"),
         ],
-        date_check_sheets,
+        date_check_sheets + docx_name_check_sheets,
         "檢查清單",
     )
 
