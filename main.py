@@ -25,8 +25,9 @@ IMAGE_EXTENSIONS = {
 # 民國日期格式：115.12.5 / 115-12-5 / 115_12_05 等（年 2~3 碼，月、日 1~2 碼）
 DATE_PATTERN = re.compile(r"(?<!\d)(\d{2,3})[.\-_](\d{1,2})[.\-_](\d{1,2})(?!\d)")
 
-# 資料夾名稱裡的月.日格式：08.01 / 8.1 等（不含年份）
-FOLDER_DATE_PATTERN = re.compile(r"(?<!\d)(\d{1,2})[.\-_](\d{1,2})(?!\d)")
+# 資料夾名稱「整段」需恰好是月.日格式：08.01 / 8.1 等（不含年份），避免資料夾名稱中的
+# 型號、設備編號等子字串（例如「EF-3-1」）被誤判為日期
+FOLDER_DATE_PATTERN = re.compile(r"(\d{1,2})[.\-_](\d{1,2})")
 
 # docx 檔名開頭的西元日期格式：20260801_XXXX
 DOCX_NAME_DATE_PATTERN = re.compile(r"^(\d{4})(\d{2})(\d{2})_")
@@ -50,8 +51,12 @@ def load_name_list(root):
 
 
 def parse_folder_month_day(folder_name: str):
-    """從資料夾名稱找出「月.日」（例如 08.01），回傳 (month, day) 或 None。"""
-    match = FOLDER_DATE_PATTERN.search(folder_name)
+    """判斷資料夾名稱整段是否恰好是「月.日」格式（例如 08.01），回傳 (month, day) 或 None。
+
+    只接受整段名稱完全符合，避免名稱中夾雜的型號、設備編號等子字串
+    （例如「中正7F-3-1保養」裡的「3-1」）被誤判為日期。
+    """
+    match = FOLDER_DATE_PATTERN.fullmatch(folder_name.strip())
     if not match:
         return None
     month, day = (int(g) for g in match.groups())
@@ -74,15 +79,15 @@ def find_ancestor_month_day(folder: Path, root: Path):
 
 
 def find_grandparent_month_day(docx_path: Path, root: Path):
-    """找出 docx 檔案上上一層資料夾（含往上找）的「月.日」，回傳 (month, day) 或 None。
+    """取出 docx 檔案「上上一層」資料夾名稱的「月.日」，回傳 (month, day) 或 None。
 
-    例如 08.01/工作項目/xxx.docx，會比對到 08.01 這一層。
-    若上上一層已經在 root 之外（docx 放太淺），則不進行比對。
+    固定路徑結構為 root/月/月.日/工作項目/xxx.docx，因此直接比對 docx 上上一層
+    （即月.日資料夾本身）的名稱，不往上額外搜尋，避免比對到非預期的祖先資料夾。
     """
     grandparent = docx_path.parent.parent
     if grandparent != root and root not in grandparent.parents:
         return None
-    return find_ancestor_month_day(grandparent, root)
+    return parse_folder_month_day(grandparent.name)
 
 
 def output_basename(label):
@@ -407,13 +412,14 @@ def build_docx_name_check_sheets(root):
     rows = []
     for path in sorted(scan_docx_files(root), key=lambda p: natural_sort_key(str(p))):
         result = check_docx_name_against_folder(path, root_path)
+        folder = path.parent
         try:
-            display = str(path.relative_to(root_path))
+            display = str(folder.relative_to(root_path))
         except ValueError:
-            display = str(path)
+            display = str(folder)
         rows.append(
             {
-                "docx路徑": path_link(path, display),
+                "資料夾路徑": path_link(folder, display if display != "." else ""),
                 "資料夾日期(月.日)": result["folder_date"],
                 "檔名日期": result["file_date"],
                 "是否合格": "合格" if result["qualified"] else "不合格",
@@ -421,11 +427,171 @@ def build_docx_name_check_sheets(root):
             }
         )
 
-    fieldnames = ["docx路徑", "資料夾日期(月.日)", "檔名日期", "是否合格", "不合格原因"]
+    fieldnames = [
+        "資料夾路徑",
+        "資料夾日期(月.日)",
+        "檔名日期",
+        "是否合格",
+        "不合格原因",
+    ]
 
     return [
         ("docx檔名與資料夾比對", fieldnames, rows),
     ]
+
+
+# ---------- 人名＋日期檔名格式檢核 ----------
+
+
+def check_name_date_format(stem: str, result, matched_name: str):
+    """檢查「人名＋日期」在檔名中的先後順序、是否緊鄰，以及日期是否月、日皆補零成二碼。
+
+    合格：人名115.05.01（人名緊接在日期前面，中間無其他字元，且月、日皆二碼）。
+    不合格：人名115.5.1（月或日未補零）、115.05.01人名（日期在人名前面）、
+           或人名與日期中間夾了其他字元（例如空白，如「人名 115.05.01」）。
+    """
+    prefix = stem[: result["match_start"]]
+
+    if not prefix.endswith(matched_name):
+        if matched_name in prefix:
+            return False, "人名與日期之間有其他字元（例如空白）"
+        return False, "日期出現在人名前面（順序相反）"
+
+    date_parts = re.split(r"[.\-_]", result["raw"])
+    month_str, day_str = date_parts[1], date_parts[2]
+    is_zero_padded = len(month_str) == 2 and len(day_str) == 2
+
+    if not is_zero_padded:
+        return False, "月或日未補零成二碼"
+    return True, ""
+
+
+def suggest_qualified_filename(path: Path, result, matched_name: str) -> str:
+    """組出「若修正成合格格式」的檔名參考：人名緊接補零後的日期，其餘文字保留在後面。"""
+    corrected_date = f"{result['roc_year']}.{result['month']:02d}.{result['day']:02d}"
+    extra_text = (
+        path.stem.replace(result["raw"], "", 1).replace(matched_name, "", 1).strip()
+    )
+    return f"{matched_name}{corrected_date}{extra_text}{path.suffix}"
+
+
+def scan_name_date_format_issues(root):
+    """為每張「同時符合人名名單與日期格式」的圖片，產出檢查結果。
+
+    yield (path, matched_name, result, qualified, reason, suggested_name)。
+    """
+    names = load_name_list(root)
+    if not names:
+        return
+
+    for path in sorted(scan_images(root), key=lambda p: natural_sort_key(str(p))):
+        stem = path.stem
+        result = find_date_in_filename(stem)
+        if result is None or not result["is_valid"]:
+            continue
+
+        matched_name = find_person_name(stem, result, names)
+        if matched_name is None:
+            continue
+
+        qualified, reason = check_name_date_format(stem, result, matched_name)
+        suggested_name = suggest_qualified_filename(path, result, matched_name)
+        yield path, matched_name, result, qualified, reason, suggested_name
+
+
+def build_name_date_format_check_sheets(root):
+    root_path = Path(root)
+
+    rows = []
+    for (
+        path,
+        matched_name,
+        result,
+        qualified,
+        reason,
+        suggested_name,
+    ) in scan_name_date_format_issues(root):
+        folder = path.parent
+        try:
+            display = str(folder.relative_to(root_path))
+        except ValueError:
+            display = str(folder)
+
+        rows.append(
+            {
+                "資料夾路徑": path_link(folder, display if display != "." else ""),
+                "比對到的人名": matched_name,
+                "比對到的日期": result["raw"],
+                "是否合格": "合格" if qualified else "不合格",
+                "不合格原因": reason,
+                "原始檔名": path.name,
+                "修正成合格後的檔名(參考)": suggested_name,
+            }
+        )
+
+    fieldnames = [
+        "資料夾路徑",
+        "比對到的人名",
+        "比對到的日期",
+        "是否合格",
+        "不合格原因",
+        "原始檔名",
+        "修正成合格後的檔名(參考)",
+    ]
+
+    return [
+        ("人名日期格式檢核", fieldnames, rows),
+    ]
+
+
+def prompt_and_rename_unqualified_images(root):
+    """列出不合格的「人名＋日期」圖片檔名，顯示修改前後對照，需輸入 yes 才會實際重新命名。"""
+    root_path = Path(root)
+    plan = []
+    for (
+        path,
+        _matched_name,
+        _result,
+        qualified,
+        _reason,
+        suggested_name,
+    ) in scan_name_date_format_issues(root):
+        if qualified:
+            continue
+        new_path = path.with_name(suggested_name)
+        if new_path == path:
+            continue
+        plan.append((path, new_path))
+
+    if not plan:
+        return
+
+    print()
+    print("=== 以下圖片檔名不符合「人名+日期」合格格式，可修改為建議檔名 ===")
+    for old_path, new_path in plan:
+        try:
+            display = str(old_path.parent.relative_to(root_path))
+        except ValueError:
+            display = str(old_path.parent)
+        print(f"路徑：{display}")
+        print(f"  修改前：{old_path.name}")
+        print(f"  修改後：{new_path.name}")
+
+    answer = input(
+        f"\n共 {len(plan)} 個檔案，是否要套用以上重新命名？輸入 yes 才會執行："
+    )
+    if answer.strip().lower() != "yes":
+        print("已取消，未修改任何檔案。")
+        return
+
+    renamed = 0
+    for old_path, new_path in plan:
+        if new_path.exists():
+            print(f"略過（目標檔名已存在）：{new_path}")
+            continue
+        old_path.rename(new_path)
+        renamed += 1
+    print(f"已完成，共重新命名 {renamed} 個檔案。")
 
 
 # ---------- XLSX 寫出（純標準庫，不依賴 openpyxl 等第三方套件） ----------
@@ -706,6 +872,7 @@ def main():
 
     date_check_sheets = build_date_check_sheets(root)
     docx_name_check_sheets = build_docx_name_check_sheets(root)
+    name_date_format_sheets = build_name_date_format_check_sheets(root)
 
     generate_combined_xlsx(
         root,
@@ -716,9 +883,11 @@ def main():
             (empty_dirs, "空資料夾"),
             (docx_only_dirs, "只有docx沒有圖片(需要另存圖片)"),
         ],
-        date_check_sheets + docx_name_check_sheets,
+        date_check_sheets + docx_name_check_sheets + name_date_format_sheets,
         "檢查清單",
     )
+
+    prompt_and_rename_unqualified_images(root)
 
 
 if __name__ == "__main__":
