@@ -35,6 +35,13 @@ DOCX_NAME_DATE_PATTERN = re.compile(r"^(\d{4})(\d{2})(\d{2})_")
 # 人名名單檔案，需與 main.py（或打包後的 exe）放在同一個要檢查的資料夾內
 NAMES_FILENAME = "123.txt"
 
+# 掃描時要略過的資料夾名稱：隱藏資料夾與 Python 快取資料夾，避免被誤判為工作項目資料夾
+IGNORED_DIR_NAMES = {"__pycache__"}
+
+
+def _filter_dirnames(dirnames):
+    return [d for d in dirnames if not d.startswith(".") and d not in IGNORED_DIR_NAMES]
+
 
 def load_name_list(root):
     """讀取人名名單（每行一個名字）。找不到檔案時回傳 None，表示不進行人名檢查。"""
@@ -127,7 +134,7 @@ def path_link(path: Path, display: str) -> Hyperlink:
 def find_thumbs_files(root):
     found = []
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+        dirnames[:] = _filter_dirnames(dirnames)
         for f in filenames:
             if f.lower() == "thumbs.db":
                 found.append(os.path.join(dirpath, f))
@@ -137,7 +144,7 @@ def find_thumbs_files(root):
 def find_empty_dirs(root):
     empty = []
     for dirpath, dirnames, filenames in os.walk(root, topdown=True):
-        dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+        dirnames[:] = _filter_dirnames(dirnames)
         if dirpath == root:
             continue
         if not dirnames and not filenames:
@@ -156,7 +163,7 @@ def find_dirs_by_name_keyword(root, keyword):
 def find_dirs_by_name_keywords(root, keywords):
     result = []
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+        dirnames[:] = _filter_dirnames(dirnames)
         if dirpath == root:
             continue
         name = os.path.basename(dirpath)
@@ -168,7 +175,7 @@ def find_dirs_by_name_keywords(root, keywords):
 def find_docx_only_dirs(root):
     result = []
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+        dirnames[:] = _filter_dirnames(dirnames)
 
         is_leaf = len(dirnames) == 0
         if not is_leaf:
@@ -248,20 +255,16 @@ def find_person_name(stem: str, result, names):
 
 def scan_images(root):
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+        dirnames[:] = _filter_dirnames(dirnames)
         for f in filenames:
             if os.path.splitext(f)[1].lower() in IMAGE_EXTENSIONS:
                 yield Path(dirpath) / f
 
 
-def build_date_check_sheets(root):
+def compute_date_check_folder_stats(root):
+    """依資料夾分組，統計圖片日期／人名比對結果，回傳 {folder(Path): stats}。"""
     root_path = Path(root)
     names = load_name_list(root)
-    if names is None:
-        print(
-            f"警告：找不到人名名單 {NAMES_FILENAME}，將略過人名檢查。",
-            file=sys.stderr,
-        )
 
     folder_stats = {}
     for path in sorted(scan_images(root), key=lambda p: natural_sort_key(str(p))):
@@ -301,14 +304,23 @@ def build_date_check_sheets(root):
             stats["含有效日期圖片數"] += 1
             stats["符合日期檔名"].append(path.name)
 
+    return folder_stats
+
+
+def is_date_check_folder_qualified(stats) -> bool:
+    return (
+        stats["含有效日期圖片數"] > 0
+        and not stats["日期與資料夾不符檔名"]
+        and not stats["人名不在名單檔名"]
+    )
+
+
+def build_date_check_sheets(root, folder_stats):
+    root_path = Path(root)
     folder_rows = []
     for folder in sorted(folder_stats, key=lambda p: natural_sort_key(str(p))):
         stats = folder_stats[folder]
-        qualified = (
-            stats["含有效日期圖片數"] > 0
-            and not stats["日期與資料夾不符檔名"]
-            and not stats["人名不在名單檔名"]
-        )
+        qualified = is_date_check_folder_qualified(stats)
         try:
             display = str(folder.relative_to(root_path))
         except ValueError:
@@ -345,7 +357,7 @@ def build_date_check_sheets(root):
 
 def scan_docx_files(root):
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+        dirnames[:] = _filter_dirnames(dirnames)
         for f in filenames:
             if f.lower().endswith(".docx"):
                 yield Path(dirpath) / f
@@ -407,11 +419,21 @@ def check_docx_name_against_folder(path: Path, root: Path):
     }
 
 
-def build_docx_name_check_sheets(root):
+def compute_docx_check_results(root):
+    """回傳 [(docx路徑, 檢查結果dict), ...]，供分頁與統計共用。"""
+    root_path = Path(root)
+    return [
+        (path, check_docx_name_against_folder(path, root_path))
+        for path in sorted(
+            scan_docx_files(root), key=lambda p: natural_sort_key(str(p))
+        )
+    ]
+
+
+def build_docx_name_check_sheets(root, docx_results):
     root_path = Path(root)
     rows = []
-    for path in sorted(scan_docx_files(root), key=lambda p: natural_sort_key(str(p))):
-        result = check_docx_name_against_folder(path, root_path)
+    for path, result in docx_results:
         folder = path.parent
         try:
             display = str(folder.relative_to(root_path))
@@ -499,7 +521,7 @@ def scan_name_date_format_issues(root):
         yield path, matched_name, result, qualified, reason, suggested_name
 
 
-def build_name_date_format_check_sheets(root):
+def build_name_date_format_check_sheets(root, issues):
     root_path = Path(root)
 
     rows = []
@@ -510,7 +532,7 @@ def build_name_date_format_check_sheets(root):
         qualified,
         reason,
         suggested_name,
-    ) in scan_name_date_format_issues(root):
+    ) in issues:
         folder = path.parent
         try:
             display = str(folder.relative_to(root_path))
@@ -544,7 +566,7 @@ def build_name_date_format_check_sheets(root):
     ]
 
 
-def prompt_and_rename_unqualified_images(root):
+def prompt_and_rename_unqualified_images(root, issues):
     """列出不合格的「人名＋日期」圖片檔名，顯示修改前後對照，需輸入 yes 才會實際重新命名。"""
     root_path = Path(root)
     plan = []
@@ -555,7 +577,7 @@ def prompt_and_rename_unqualified_images(root):
         qualified,
         _reason,
         suggested_name,
-    ) in scan_name_date_format_issues(root):
+    ) in issues:
         if qualified:
             continue
         new_path = path.with_name(suggested_name)
@@ -623,6 +645,18 @@ def _display_width(text: str) -> float:
     return width
 
 
+# 試算表公式觸發字元：儲存格內容若以這些字元開頭，Excel/LibreOffice 在某些情境下
+# （例如先匯出成 CSV 再重新開啟）可能會把純文字誤判成公式並執行
+_FORMULA_TRIGGER_CHARS = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _neutralize_formula_prefix(text: str) -> str:
+    """若文字開頭是公式觸發字元，補一個單引號讓試算表軟體視為純文字。"""
+    if text and text[0] in _FORMULA_TRIGGER_CHARS:
+        return "'" + text
+    return text
+
+
 def _build_sheet_xml(fieldnames: list, rows: list):
     """組出單一分頁的 sheetN.xml 內容，回傳 (sheet_xml, sheet_rels_xml_or_None)。"""
     col_count = len(fieldnames)
@@ -652,14 +686,14 @@ def _build_sheet_xml(fieldnames: list, rows: list):
 
         if isinstance(value, Hyperlink):
             hyperlink_entries.append((ref, value.href))
-            text = escape(value.display)
+            text = escape(_neutralize_formula_prefix(value.display))
             return f'<c r="{ref}"{style_attr} t="inlineStr"><is><t xml:space="preserve">{text}</t></is></c>'
         if isinstance(value, (int, float)) and not isinstance(value, bool):
             return f'<c r="{ref}"{style_attr}><v>{value}</v></c>'
         text = "" if value is None else str(value)
         if text == "":
             return f'<c r="{ref}"{style_attr}/>'
-        text = escape(text)
+        text = escape(_neutralize_formula_prefix(text))
         return f'<c r="{ref}"{style_attr} t="inlineStr"><is><t xml:space="preserve">{text}</t></is></c>'
 
     row_xml_parts = []
@@ -801,7 +835,7 @@ def write_xlsx(path: Path, sheets: list):
 </styleSheet>
 """
 
-    if path.exists():
+    if path.is_symlink() or path.exists():
         path.unlink()
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr("[Content_Types].xml", content_types_xml)
@@ -813,12 +847,52 @@ def write_xlsx(path: Path, sheets: list):
             zf.writestr(name, data)
 
 
-def generate_combined_xlsx(root, sections, date_check_sheets, label):
-    sheets = [
+# ---------- 統計總覽 ----------
+
+
+def find_all_leaf_dirs(root):
+    """回傳所有葉資料夾（沒有子資料夾）的路徑字串，作為「資料夾總數」的統計基準。"""
+    leaf_dirs = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = _filter_dirnames(dirnames)
+        if dirpath == root:
+            continue
+        if not dirnames:
+            leaf_dirs.append(dirpath)
+    return leaf_dirs
+
+
+def _norm_dir(path) -> str:
+    return os.path.normpath(str(path))
+
+
+def build_summary_sheet(total_dirs, unqualified_dirs):
+    """統計「資料夾總數」與「不合格資料夾數」，不合格資料夾以路徑去重，不重複計算。"""
+    total = {_norm_dir(d) for d in total_dirs}
+    unqualified = {_norm_dir(d) for d in unqualified_dirs} & total
+    qualified = len(total) - len(unqualified)
+    completion_rate = f"{qualified / len(total) * 100:.1f}%" if total else "N/A"
+
+    rows = [
+        {"項目": "資料夾總數", "數量": len(total)},
+        {"項目": "合格資料夾數", "數量": qualified},
+        {"項目": "不合格資料夾數", "數量": len(unqualified)},
+        {"項目": "完成率", "數量": completion_rate},
+    ]
+    fieldnames = ["項目", "數量"]
+
+    return [("統計總覽", fieldnames, rows)]
+
+
+def generate_combined_xlsx(
+    root, sections, date_check_sheets, label, leading_sheets=None
+):
+    sheets = list(leading_sheets or [])
+    sheets.extend(
         (sheet_name, ["資料夾路徑"], dir_list_rows(root, dirs))
         for dirs, sheet_name in sections
         if dirs
-    ]
+    )
     sheets.extend(date_check_sheets)
     if not sheets:
         return None
@@ -846,7 +920,7 @@ def main():
     dirs_missing_docx = []
 
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+        dirnames[:] = _filter_dirnames(dirnames)
 
         is_leaf = len(dirnames) == 0
         if not is_leaf:
@@ -870,9 +944,41 @@ def main():
 
     docx_only_dirs = find_docx_only_dirs(root)
 
-    date_check_sheets = build_date_check_sheets(root)
-    docx_name_check_sheets = build_docx_name_check_sheets(root)
-    name_date_format_sheets = build_name_date_format_check_sheets(root)
+    if load_name_list(root) is None:
+        print(
+            f"警告：找不到人名名單 {NAMES_FILENAME}，將略過人名檢查。",
+            file=sys.stderr,
+        )
+
+    date_check_folder_stats = compute_date_check_folder_stats(root)
+    date_check_sheets = build_date_check_sheets(root, date_check_folder_stats)
+
+    docx_check_results = compute_docx_check_results(root)
+    docx_name_check_sheets = build_docx_name_check_sheets(root, docx_check_results)
+
+    name_date_format_issues = list(scan_name_date_format_issues(root))
+    name_date_format_sheets = build_name_date_format_check_sheets(
+        root, name_date_format_issues
+    )
+
+    unqualified_dirs = set(dirs_missing_docx) | set(empty_dirs) | set(docx_only_dirs)
+    unqualified_dirs |= {
+        folder
+        for folder, stats in date_check_folder_stats.items()
+        if not is_date_check_folder_qualified(stats)
+    }
+    unqualified_dirs |= {
+        path.parent for path, result in docx_check_results if not result["qualified"]
+    }
+    unqualified_dirs |= {
+        path.parent
+        for path, _matched_name, _result, qualified, _reason, _suggested_name in (
+            name_date_format_issues
+        )
+        if not qualified
+    }
+
+    summary_sheet = build_summary_sheet(find_all_leaf_dirs(root), unqualified_dirs)
 
     generate_combined_xlsx(
         root,
@@ -885,9 +991,10 @@ def main():
         ],
         date_check_sheets + docx_name_check_sheets + name_date_format_sheets,
         "檢查清單",
+        leading_sheets=summary_sheet,
     )
 
-    prompt_and_rename_unqualified_images(root)
+    prompt_and_rename_unqualified_images(root, name_date_format_issues)
 
 
 if __name__ == "__main__":
