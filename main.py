@@ -38,9 +38,20 @@ NAMES_FILENAME = "123.txt"
 # 掃描時要略過的資料夾名稱：隱藏資料夾與 Python 快取資料夾，避免被誤判為工作項目資料夾
 IGNORED_DIR_NAMES = {"__pycache__"}
 
+# 資料夾名稱含有此關鍵字時，預設不納入統計，除非執行時輸入 yes 明確納入
+CHLORINE_TABLET_KEYWORD = "氯錠"
+
+# 是否將名稱含「氯錠」的資料夾納入統計；由 main() 開頭詢問使用者後設定
+_include_chlorine_tablet_dirs = False
+
 
 def _filter_dirnames(dirnames):
-    return [d for d in dirnames if not d.startswith(".") and d not in IGNORED_DIR_NAMES]
+    filtered = [
+        d for d in dirnames if not d.startswith(".") and d not in IGNORED_DIR_NAMES
+    ]
+    if not _include_chlorine_tablet_dirs:
+        filtered = [d for d in filtered if CHLORINE_TABLET_KEYWORD not in d]
+    return filtered
 
 
 def load_name_list(root):
@@ -903,6 +914,12 @@ def generate_combined_xlsx(
 
 
 def main():
+    global _include_chlorine_tablet_dirs
+    answer = input(
+        f"是否要將資料夾名稱含有「{CHLORINE_TABLET_KEYWORD}」的資料夾納入統計？輸入 yes 才會納入："
+    )
+    _include_chlorine_tablet_dirs = answer.strip().lower() == "yes"
+
     root = os.getcwd()
 
     thumbs_files = find_thumbs_files(root)
