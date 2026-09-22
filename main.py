@@ -44,13 +44,18 @@ CHLORINE_TABLET_KEYWORD = "氯錠"
 # 是否將名稱含「氯錠」的資料夾納入統計；由 main() 開頭詢問使用者後設定
 _include_chlorine_tablet_dirs = False
 
+# 根目錄底下第一層資料夾名稱須恰好是 01~12 這種月份格式，其他名稱（例如 test）一律略過不掃描
+MONTH_DIR_PATTERN = re.compile(r"^(0[1-9]|1[0-2])$")
 
-def _filter_dirnames(dirnames):
+
+def _filter_dirnames(dirnames, dirpath, root):
     filtered = [
         d for d in dirnames if not d.startswith(".") and d not in IGNORED_DIR_NAMES
     ]
     if not _include_chlorine_tablet_dirs:
         filtered = [d for d in filtered if CHLORINE_TABLET_KEYWORD not in d]
+    if dirpath == root:
+        filtered = [d for d in filtered if MONTH_DIR_PATTERN.fullmatch(d)]
     return filtered
 
 
@@ -145,7 +150,7 @@ def path_link(path: Path, display: str) -> Hyperlink:
 def find_thumbs_files(root):
     found = []
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = _filter_dirnames(dirnames)
+        dirnames[:] = _filter_dirnames(dirnames, dirpath, root)
         for f in filenames:
             if f.lower() == "thumbs.db":
                 found.append(os.path.join(dirpath, f))
@@ -155,7 +160,7 @@ def find_thumbs_files(root):
 def find_empty_dirs(root):
     empty = []
     for dirpath, dirnames, filenames in os.walk(root, topdown=True):
-        dirnames[:] = _filter_dirnames(dirnames)
+        dirnames[:] = _filter_dirnames(dirnames, dirpath, root)
         if dirpath == root:
             continue
         if not dirnames and not filenames:
@@ -174,7 +179,7 @@ def find_dirs_by_name_keyword(root, keyword):
 def find_dirs_by_name_keywords(root, keywords):
     result = []
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = _filter_dirnames(dirnames)
+        dirnames[:] = _filter_dirnames(dirnames, dirpath, root)
         if dirpath == root:
             continue
         name = os.path.basename(dirpath)
@@ -186,7 +191,7 @@ def find_dirs_by_name_keywords(root, keywords):
 def find_docx_only_dirs(root):
     result = []
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = _filter_dirnames(dirnames)
+        dirnames[:] = _filter_dirnames(dirnames, dirpath, root)
 
         is_leaf = len(dirnames) == 0
         if not is_leaf:
@@ -266,7 +271,7 @@ def find_person_name(stem: str, result, names):
 
 def scan_images(root):
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = _filter_dirnames(dirnames)
+        dirnames[:] = _filter_dirnames(dirnames, dirpath, root)
         for f in filenames:
             if os.path.splitext(f)[1].lower() in IMAGE_EXTENSIONS:
                 yield Path(dirpath) / f
@@ -368,7 +373,7 @@ def build_date_check_sheets(root, folder_stats):
 
 def scan_docx_files(root):
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = _filter_dirnames(dirnames)
+        dirnames[:] = _filter_dirnames(dirnames, dirpath, root)
         for f in filenames:
             if f.lower().endswith(".docx"):
                 yield Path(dirpath) / f
@@ -865,7 +870,7 @@ def find_all_leaf_dirs(root):
     """回傳所有葉資料夾（沒有子資料夾）的路徑字串，作為「資料夾總數」的統計基準。"""
     leaf_dirs = []
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = _filter_dirnames(dirnames)
+        dirnames[:] = _filter_dirnames(dirnames, dirpath, root)
         if dirpath == root:
             continue
         if not dirnames:
@@ -937,7 +942,7 @@ def main():
     dirs_missing_docx = []
 
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = _filter_dirnames(dirnames)
+        dirnames[:] = _filter_dirnames(dirnames, dirpath, root)
 
         is_leaf = len(dirnames) == 0
         if not is_leaf:
