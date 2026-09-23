@@ -35,23 +35,18 @@ DOCX_NAME_DATE_PATTERN = re.compile(r"^(\d{4})(\d{2})(\d{2})_")
 # 人名名單檔案，需與 main.py（或打包後的 exe）放在同一個要檢查的資料夾內
 NAMES_FILENAME = "123.txt"
 
-# 掃描時要略過的資料夾名稱：隱藏資料夾與 Python 快取資料夾，避免被誤判為工作項目資料夾
-IGNORED_DIR_NAMES = {"__pycache__"}
-
 # 資料夾名稱含有此關鍵字時，預設不納入統計，除非執行時輸入 yes 明確納入
 CHLORINE_TABLET_KEYWORD = "氯錠"
 
 # 是否將名稱含「氯錠」的資料夾納入統計；由 main() 開頭詢問使用者後設定
 _include_chlorine_tablet_dirs = False
 
-# 根目錄底下第一層資料夾名稱須恰好是 01~12 這種月份格式，其他名稱（例如 test）一律略過不掃描
-MONTH_DIR_PATTERN = re.compile(r"^(0[1-9]|1[0-2])$")
+# 根目錄底下第一層資料夾名稱須恰好是「7月」「12月」這種月份格式，其他名稱（例如 test）一律略過不掃描
+MONTH_DIR_PATTERN = re.compile(r"^(1[0-2]|[1-9])月$")
 
 
 def _filter_dirnames(dirnames, dirpath, root):
-    filtered = [
-        d for d in dirnames if not d.startswith(".") and d not in IGNORED_DIR_NAMES
-    ]
+    filtered = list(dirnames)
     if not _include_chlorine_tablet_dirs:
         filtered = [d for d in filtered if CHLORINE_TABLET_KEYWORD not in d]
     if dirpath == root:
